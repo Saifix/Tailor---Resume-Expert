@@ -28,6 +28,15 @@ export type DocType = "resume" | "academic";
 
 export type SourceFile = { name: string; original: string; readable: string; kind: "text" | "pdf" | "image" | "word" };
 
+/** One question from an application form, answered by Claude (jobs/<slug>/form-answers.json). */
+export type FormAnswer = {
+  id: string;
+  question: string;
+  answer: string;
+  limit?: { n: number; unit: "characters" | "words" };
+  needsInput?: string; // what Claude needs from the user before this answer is final
+};
+
 /** Optional extra context the candidate adds for one application (saved in jobs/<slug>/extras/). */
 export type JobExtras = { note?: string; files: SourceFile[] };
 
@@ -69,6 +78,7 @@ export type JobMeta = {
   research?: Research;
   letterChecks?: QualityCheck[];
   extras?: JobExtras;
+  formAnswers?: { items: FormAnswer[]; updatedAt: string; checks?: QualityCheck[] };
   match?: { before: number; after: number };
   keywords?: Keywords;
   summary?: string;

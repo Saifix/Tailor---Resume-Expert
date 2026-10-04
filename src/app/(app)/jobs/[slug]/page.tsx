@@ -4,6 +4,7 @@ import { FileText, Folder, Send, Sparkles, Briefcase, NotebookPen } from "lucide
 import { HeaderActions, NotesEditor, Reminders, StatusMenu } from "./actions";
 import { ChecksList, ClaudeAssist } from "@/components/assist";
 import { CoverLetterPanel, ResearchCard } from "@/components/research";
+import { FormAnswersPanel } from "@/components/form-answers";
 import { Prose, ResumeDoc } from "@/components/markdown";
 import { PageBody, TopBar } from "@/components/topbar";
 import { ButtonLink, CompanyTile, cx, Empty, MatchRing } from "@/components/ui";
@@ -17,6 +18,7 @@ const TABS = [
   { id: "jd", label: "Job description", file: "job-description.md" },
   { id: "report", label: "Match report", file: "match-report.md" },
   { id: "cover", label: "Cover letter", file: "cover-letter.md" },
+  { id: "answers", label: "Form answers", file: "form-answers.md" },
   { id: "notes", label: "Notes", file: "notes.md" },
 ] as const;
 
@@ -35,7 +37,7 @@ export default async function JobPage(props: PageProps<"/jobs/[slug]">) {
 
   const [files, shell] = await Promise.all([listJobFiles(slug), shellData()]);
   const fileNames = new Set(files.map((f) => f.name));
-  const tabs = TABS.filter((t) => t.id === "resume" || t.id === "notes" || fileNames.has(t.file));
+  const tabs = TABS.filter((t) => t.id === "resume" || t.id === "notes" || t.id === "answers" || fileNames.has(t.file));
   const tab = tabs.find((t) => t.id === sp.tab) ?? tabs[0];
   const content = tab.id === "notes" ? ((await getJobFile(slug, "notes.md")) ?? "") : await getJobFile(slug, tab.file);
   const base = tab.id === "resume" && content ? await getResume(job.baseResume) : null;
@@ -105,7 +107,9 @@ export default async function JobPage(props: PageProps<"/jobs/[slug]">) {
         </nav>
 
         <div className="grid flex-1 grid-cols-[1fr_330px] gap-5">
-          {tab.id === "notes" ? (
+          {tab.id === "answers" ? (
+            <FormAnswersPanel slug={slug} items={job.formAnswers?.items ?? []} checks={job.formAnswers?.checks} company={job.company} />
+          ) : tab.id === "notes" ? (
             <NotesEditor slug={slug} initial={content ?? ""} />
           ) : tab.id === "resume" ? (
             <div className="relative flex justify-center overflow-hidden rounded-[20px] bg-muted px-7 pt-14">
@@ -204,6 +208,6 @@ export default async function JobPage(props: PageProps<"/jobs/[slug]">) {
 }
 
 function eventLabel(type: string) {
-  const map: Record<string, string> = { created: "Job saved", tailoring: "Tailoring started", revising: "Asked Claude for changes", tailored: "Tailored with Claude", "cover-letter": "Cover letter written" };
+  const map: Record<string, string> = { created: "Job saved", tailoring: "Tailoring started", revising: "Asked Claude for changes", tailored: "Tailored with Claude", "cover-letter": "Cover letter written", "form-answers": "Form questions answered" };
   return map[type] ?? STATUS_LABEL[type as keyof typeof STATUS_LABEL] ?? type;
 }

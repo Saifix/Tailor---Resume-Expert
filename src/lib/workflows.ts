@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { createRun, emit, exec, finishRun, setPhase, subscribe, type ClaudeConfig, type ExecResult, type Phase, type Run, type RunEvent } from "./claude";
-import { aiTells, issuesForClaude, runBuildChecks, runChecks, runLetterChecks } from "./checks";
+import { aiTells, issuesForClaude, runAnswerChecks, runBuildChecks, runChecks, runLetterChecks } from "./checks";
 import { countPages, renderPdf } from "./pdf";
 import { dirs, rel } from "./paths";
 import {
@@ -179,6 +179,13 @@ async function tailorFlow(run: Run, job: JobMeta, opts: TailorOpts) {
       if (fix.stopped) return failTailor(run, job, restore, "Stopped before finishing");
       break; // keep the last good draft; the failed checks stay visible to the user
     }
+  }
+
+  // Form questions pasted when applying → answer them now, in the same conversation (it already knows the job).
+  const fresh = await getJob(job.slug);
+  if (!fresh?.formAnswers?.items.length && (await readText(path.join(jobDir(job.slug), "form-questions.md")))) {
+    const a = await answersPhase(run, fresh ?? job, cfg, { resume: sessionId });
+    sessionId = a.sessionId ?? sessionId;
   }
 
   const final = await updateJob(job.slug, (m) => ({
@@ -468,6 +475,113 @@ async function writeOutreachRequest(item: OutreachItem, profile: string, default
     "```",
   ].join("\n");
   await fs.writeFile(path.join(dirs.outreach, `${item.slug}.request.md`), req, "utf8");
+}
+
+// ───────────────────────────── Application form questions ─────────────────────────────
+
+/** Append newly pasted questions to jobs/<slug>/form-questions.md (keeps earlier batches). */
+export async function addFormQuestions(slug: string, text: string) {
+  const file = path.join(jobDir(slug), "form-questions.md");
+  const cur = (await readText(file)) ?? "# Application form questions\n";
+  await fs.writeFile(file, `${cur.trimEnd()}\n\n## Pasted ${new Date().toISOString().slice(0, 16).replace("T", " ")}\n\n${text.trim()}\n`, "utf8");
+}
+
+/** Answer form questions on their own (job page), with the same self-check → fix loop. */
+export async function startFormAnswers(job: JobMeta, opts: { instruction?: string; override?: Partial<ClaudeConfig> }): Promise<Run> {
+  await ensureHome();
+  const run = createRun("tailor", job.slug);
+  await updateJob(job.slug, { lastRunId: run.id });
+  void (async () => {
+    const cfg = await getClaudeConfig(opts.override);
+    const r = await answersPhase(run, job, cfg, { instruction: opts.instruction, resume: job.sessionId });
+    finishRun(run, r.ok);
+  })().catch((e) => {
+    emit(run, { type: "log", text: (e as Error).message, at: Date.now() });
+    finishRun(run, false);
+  });
+  return run;
+}
+
+async function answersPhase(run: Run, job: JobMeta, cfg: Awaited<ReturnType<typeof getClaudeConfig>>, opts: { instruction?: string; resume?: string }): Promise<{ ok: boolean; sessionId?: string }> {
+  const installed = await enabledSkillNames();
+  const folder = rel(jobDir(job.slug)) + "/";
+  const questionsText = (await readText(path.join(jobDir(job.slug), "form-questions.md"))) ?? "";
+  if (!questionsText.trim()) return { ok: true, sessionId: opts.resume };
+  const build = await buildForResume(job.baseResume);
+  const hasExtras = !!(job.extras && (job.extras.note || job.extras.files.length));
+  const research = job.research?.company?.length ? job.research.company.map((r) => `${r.title}: ${r.note ?? ""} (${r.url})`).join("; ") : "";
+
+  setPhase(run, { id: "answers", label: "Answering the form questions", state: "active", detail: opts.instruction?.slice(0, 120) });
+  const prompt = [
+    `Use the application-answers skill${cfg.humanVoice && installed.has("human-voice") ? " and the human-voice skill" : ""}.`,
+    ``,
+    `- Questions: ${folder}form-questions.md (answer every question in it; keep earlier answers in ${folder}form-answers.json unless asked to change them)`,
+    `- Job description: ${folder}job-description.md`,
+    `- Candidate: ${folder}resume.md (tailored; fall back to resumes/${job.baseResume}), resumes/facts.md${build ? `, ${rel(buildDir(build.slug))}/about.md and extracted.md` : ""}${hasExtras ? `, ${folder}extras/ (context for this application)` : ""}`,
+    research ? `- Company research already found: ${research}` : ``,
+    cfg.web && installed.has("job-research") ? `- Web access is ON: for "why us" questions you may look up one specific, current company detail.` : ``,
+    opts.instruction ? `- The user asks: ${opts.instruction}` : ``,
+    ``,
+    `Write ${folder}form-answers.json and ${folder}form-answers.md. Only read and write files inside the current directory. Reply with one short line.`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+  let res = await exec(run, prompt, { ...cfg, resume: opts.resume });
+  if (!res.ok && opts.resume && !res.stopped) res = await exec(run, prompt, cfg); // session gone → fresh
+  setPhase(run, { id: "answers", label: "Answering the form questions", state: res.ok ? "done" : "error" });
+  if (!res.ok) return { ok: false, sessionId: opts.resume };
+  let session = res.sessionId ?? opts.resume;
+
+  for (let round = 1; round <= MAX_REVISIONS + 1; round++) {
+    setPhase(run, { id: `acheck-${round}`, label: round === 1 ? "Self-check: limits, facts, voice" : `Re-check answers (round ${round})`, state: "active" });
+    const { items, checks } = await checkAnswers(job.slug, cfg.humanVoice);
+    emit(run, { type: "checks", checks, round, at: Date.now() });
+    const failing = checks.filter((c) => !c.ok && c.blocking);
+    setPhase(run, {
+      id: `acheck-${round}`,
+      label: round === 1 ? "Self-check: limits, facts, voice" : `Re-check answers (round ${round})`,
+      state: failing.length ? "warn" : "done",
+      detail: failing.length ? failing.map((c) => c.label).join(" · ") : `${items.length} answer${items.length === 1 ? "" : "s"} · ${checks.length}/${checks.length} checks passed`,
+    });
+    await updateJob(job.slug, (m) => ({ ...m, formAnswers: { items, checks, updatedAt: new Date().toISOString() } }));
+    if (!failing.length || round > MAX_REVISIONS) break;
+    setPhase(run, { id: `afix-${round}`, label: `Fixing answers: ${failing.map((c) => c.label.toLowerCase()).join(", ")}`, state: "active" });
+    res = await exec(run, `Tailor's self-check found problems in ${folder}form-answers.json:\n\n${issuesForClaude(checks)}\n\nFix only those answers, update form-answers.json and form-answers.md, and reply with one short line.`, { ...cfg, resume: session });
+    session = res.sessionId ?? session;
+    setPhase(run, { id: `afix-${round}`, label: `Fixing answers: ${failing.map((c) => c.label.toLowerCase()).join(", ")}`, state: res.ok ? "done" : "error" });
+    if (!res.ok) break;
+  }
+  const final = await getJob(job.slug);
+  const needs = final?.formAnswers?.items.filter((a) => a.needsInput).length ?? 0;
+  if (needs) setPhase(run, { id: "answers-input", label: `${needs} answer${needs > 1 ? "s need" : " needs"} a detail only you know`, state: "warn" });
+  await updateJob(job.slug, (m) => ({ ...m, timeline: [...m.timeline, { at: new Date().toISOString(), type: "form-answers", note: `${final?.formAnswers?.items.length ?? 0} questions` }] }));
+  return { ok: true, sessionId: session };
+}
+
+export async function checkAnswers(slug: string, humanVoice = true) {
+  const job = await getJob(slug);
+  const dir = jobDir(slug);
+  let items: { id: string; question: string; answer: string; limit?: { n: number; unit: "characters" | "words" }; needsInput?: string }[] = [];
+  try {
+    const raw = JSON.parse((await readText(path.join(dir, "form-answers.json"))) ?? "{}");
+    items = (Array.isArray(raw) ? raw : (raw.items ?? [])).map((it: Record<string, unknown>, i: number) => ({
+      id: String(it.id ?? `q${i + 1}`),
+      question: String(it.question ?? ""),
+      answer: String(it.answer ?? ""),
+      limit: it.limit as { n: number; unit: "characters" | "words" } | undefined,
+      needsInput: typeof it.needsInput === "string" && it.needsInput.trim() ? it.needsInput : undefined,
+    }));
+  } catch {}
+  if (!job) return { items, checks: [] };
+  const [resume, base, facts, jd, questionsText] = await Promise.all([
+    readText(path.join(dir, "resume.md")),
+    getResume(job.baseResume),
+    getFacts(),
+    readText(path.join(dir, "job-description.md")),
+    readText(path.join(dir, "form-questions.md")),
+  ]);
+  const sources = [resume, base, facts, jd, JSON.stringify(job.research ?? {}), await candidateExtras(job)].filter(Boolean).join("\n");
+  return { items, checks: runAnswerChecks({ items, questionsText: questionsText ?? "", sources, humanVoice }) };
 }
 
 // ───────────────────────────── Build my first resume ─────────────────────────────

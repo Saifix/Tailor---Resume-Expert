@@ -15,6 +15,10 @@
 - **No CV yet?** "Build my first resume": describe yourself (type or dictate, any language) and attach anything you have, such as a LinkedIn PDF, certificates, transcripts, screenshots or old CVs.
   - Claude records the facts it finds in your documents in `extracted.md`.
   - It builds a truthful first resume, self-checks it, and asks you questions to improve it.
+- **Application form questions.** Paste the form's own questions ("Why us? (max 600 characters)", "Describe a time…", notice period, salary) when applying or later on the job page's **Form answers** tab.
+  - Claude answers each one within its limit and in your voice, using only your real details.
+  - Answers that need something only you know are marked for your input instead of guessed.
+  - Your replies are saved to `facts.md` for future forms.
 - **Extra context when applying.** Add an optional note (a referral, why this company, projects not on your CV) and documents to any application. Claude treats them as true for that job only.
 
 Design: [Figma: brand book, components & screens](https://www.figma.com/design/Dl9gT4Gizx3chdIiN393oV)
@@ -113,10 +117,13 @@ Steps, checks and questions stream to the browser over server-sent events (`/api
 │  ├─ result.json           match score, keywords, questions (written by the skill)
 │  ├─ meta.json             status, timeline, reminders, quality checks
 │  ├─ extras/               optional context for this application (note + documents)
+│  ├─ form-questions.md     questions pasted from the application form
+│  ├─ form-answers.json/.md answers (copy into the form)
 │  └─ notes.md
 ├─ outreach/<name>.md       LinkedIn drafts
 ├─ .claude/skills/          resume-tailor, academic-cv, cover-letter, human-voice, job-research,
-│                           resume-builder, ats-keywords, impact-bullets, outreach-writer, resume-import
+│                           resume-builder, application-answers, ats-keywords, impact-bullets,
+│                           outreach-writer, resume-import
 └─ tailor.json              settings (name, model, disabled skills)
 ```
 

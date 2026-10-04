@@ -5,7 +5,7 @@ import { EFFORTS } from "@/lib/claude";
 import { extractJob } from "@/lib/extract";
 import { createJob, jobDir, listResumes, updateJob } from "@/lib/store";
 import { saveDocuments } from "@/lib/uploads";
-import { startTailor } from "@/lib/workflows";
+import { addFormQuestions, startTailor } from "@/lib/workflows";
 
 const Body = z.object({
   company: z.string().max(120).default(""),
@@ -18,6 +18,7 @@ const Body = z.object({
   model: z.string().max(80).optional(),
   effort: z.enum(EFFORTS).optional(),
   note: z.string().max(20_000).optional(), // optional context for this application
+  formQuestions: z.string().max(40_000).optional(), // the application form's own questions → answered after tailoring
 });
 
 /** JSON, or multipart with a `data` JSON field plus optional `files` (documents for this application). */
@@ -74,6 +75,7 @@ export async function POST(req: Request) {
     const { saved } = await saveDocuments(dir, files);
     job = await updateJob(job.slug, { extras: { note, files: saved } });
   }
+  if (body.formQuestions?.trim()) await addFormQuestions(job.slug, body.formQuestions);
   const run = await startTailor(job, { origin: new URL(req.url).origin, override: { model: body.model, effort: body.effort } });
   return Response.json({ slug: job.slug, runId: run.id, company: job.company, role: job.role });
 }

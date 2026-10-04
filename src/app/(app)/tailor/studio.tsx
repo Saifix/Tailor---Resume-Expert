@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
-import { AlertTriangle, ArrowRight, Briefcase, Check, Download, FileText, Folder, Globe, Link2, Plus, RotateCw, Sparkles, SquareTerminal, User, X as XIcon } from "lucide-react";
+import { AlertTriangle, ArrowRight, Briefcase, Check, ClipboardList, Download, FileText, Folder, Globe, Link2, Plus, RotateCw, Sparkles, SquareTerminal, X as XIcon } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import type { DiffLine } from "@/lib/diff";
 import type { Phase, RunEvent } from "@/lib/claude";
@@ -51,11 +51,11 @@ export function TailorStudio({
   const [effort, setEffort] = useState("");
   // Auto-detection of company / title from the pasted JD (or a link)
   const [detect, setDetect] = useState<{ state: "idle" | "working" | "done" | "error"; msg?: string }>({ state: "idle" });
-  const [touched, setTouched] = useState({ company: !!initialJob, role: !!initialJob });
   // Optional context for this application
   const [note, setNote] = useState("");
   const [extraFiles, setExtraFiles] = useState<File[]>([]);
   const [showExtras, setShowExtras] = useState(false);
+  const [formQs, setFormQs] = useState("");
 
   const run = useRun(runId);
   const live = isLive(run.status) || submitting;
@@ -76,9 +76,9 @@ export function TailorStudio({
     if (ended) router.refresh();
   }, [jobSlug, wroteResume, ended, loadJob, router]);
 
-  // Detect company / title / location shortly after a JD is pasted — unless the user typed them.
+  // Detect company / title / location shortly after a JD is pasted (there are no fields to type them in).
   useEffect(() => {
-    if (live || jd.trim().length < 120 || (touched.company && touched.role)) return;
+    if (live || jd.trim().length < 120) return;
     const ctrl = new AbortController();
     const t = setTimeout(async () => {
       setDetect({ state: "working" });
@@ -86,18 +86,19 @@ export function TailorStudio({
         const res = await fetch("/api/extract", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jd }), signal: ctrl.signal });
         const json = await res.json();
         if (!res.ok) throw new Error(json.error);
-        if (!touched.company && json.company) setCompany(json.company);
-        if (!touched.role && json.role) setRole(json.role);
-        setDetect({ state: "done", msg: [json.company, json.role, json.location].filter(Boolean).join(" · ") || "Nothing found — type it in" });
+        setCompany(json.company ?? "");
+        setRole(json.role ?? "");
+        const found = [json.company, json.role, json.location].filter(Boolean).join(" · ");
+        setDetect(found ? { state: "done", msg: found } : { state: "error", msg: "Couldn’t spot the company or title yet — Claude will pick them up when it reads the full post" });
       } catch (e) {
-        if ((e as Error).name !== "AbortError") setDetect({ state: "error", msg: "Couldn’t detect — type it in" });
+        if ((e as Error).name !== "AbortError") setDetect({ state: "error", msg: "Couldn’t detect yet — Claude will pick them up when it reads the full post" });
       }
     }, 900);
     return () => {
       clearTimeout(t);
       ctrl.abort();
     };
-  }, [jd, live, touched.company, touched.role]);
+  }, [jd, live]);
 
   async function fetchFromLink() {
     setDetect({ state: "working", msg: "Reading the job post…" });
@@ -107,8 +108,8 @@ export function TailorStudio({
       const json = await res.json();
       if (!res.ok) throw new Error(json.error);
       if (json.jd) setJd(json.jd);
-      if (!touched.company && json.company) setCompany(json.company);
-      if (!touched.role && json.role) setRole(json.role);
+      setCompany(json.company ?? "");
+      setRole(json.role ?? "");
       setDetect({ state: "done", msg: [json.company, json.role, json.location].filter(Boolean).join(" · ") });
     } catch (e) {
       setDetect({ state: "error", msg: (e as Error).message || "Couldn’t read that link" });
@@ -120,7 +121,7 @@ export function TailorStudio({
     setSubmitting(true);
     setView(null);
     try {
-      const data = { company, role, url, jd, baseResume: base, skills: opts, docType, model: model || undefined, effort: effort || undefined, note: note.trim() || undefined };
+      const data = { company, role, url, jd, baseResume: base, skills: opts, docType, model: model || undefined, effort: effort || undefined, note: note.trim() || undefined, formQuestions: formQs.trim() || undefined };
       let res: Response;
       if (extraFiles.length) {
         const fd = new FormData();
@@ -192,10 +193,6 @@ export function TailorStudio({
               ))}
             </div>
           </div>
-          <div className="grid grid-cols-[150px_1fr] gap-2.5">
-            <Field icon={Briefcase} value={company} onChange={(v) => (setCompany(v), setTouched((t) => ({ ...t, company: true })))} placeholder="Company (auto)" disabled={live} />
-            <Field icon={User} value={role} onChange={(v) => (setRole(v), setTouched((t) => ({ ...t, role: true })))} placeholder="Job title (auto)" disabled={live} />
-          </div>
           <div className="flex items-center gap-2">
             <div className="min-w-0 flex-1">
               <Field icon={Link2} value={url} onChange={setUrl} placeholder="Job post link (optional)" disabled={live} />
@@ -206,15 +203,28 @@ export function TailorStudio({
               </Button>
             )}
           </div>
-          {detect.state !== "idle" && (
-            <p className={cx("flex items-center gap-1.5 t-body-s", detect.state === "error" ? "text-bad" : detect.state === "done" ? "text-ok" : "text-ink-3")}>
+          {initialJob && !jd ? (
+            <p className="flex items-center gap-1.5 t-body-s text-ink-2">
+              <Briefcase className="size-3.5 text-ink-3" strokeWidth={1.75} /> {[initialJob.company, initialJob.role, initialJob.location].filter(Boolean).join(" · ")}
+            </p>
+          ) : detect.state !== "idle" ? (
+            <p className={cx("flex items-center gap-1.5 t-body-s", detect.state === "error" ? "text-ink-3" : detect.state === "done" ? "text-ok" : "text-ink-3")}>
               {detect.state === "working" ? (
                 <span className="shimmer-text">{detect.msg ?? "Detecting company & title…"}</span>
               ) : (
                 <>
-                  {detect.state === "done" && <Check className="size-3.5" strokeWidth={2.5} />} {detect.msg}
+                  {detect.state === "done" && (
+                    <>
+                      <Check className="size-3.5" strokeWidth={2.5} /> Detected:
+                    </>
+                  )}{" "}
+                  {detect.msg}
                 </>
               )}
+            </p>
+          ) : (
+            <p className="flex items-center gap-1.5 t-body-s text-ink-3">
+              <Sparkles className="size-3.5" strokeWidth={1.75} /> Company, job title and location are picked up from the post automatically.
             </p>
           )}
           {initialJob && !jd ? (
@@ -317,13 +327,28 @@ export function TailorStudio({
               <span className="grid size-[22px] place-items-center rounded-full bg-inverse t-label-s text-ink-inverse">4</span>
               <span className="flex-1">
                 <span className="block t-h3 text-ink">Anything else for this application?</span>
-                <span className="block t-body-s text-ink-3">Optional — a referral, why this company, projects not on your CV, a portfolio…</span>
+                <span className="block t-body-s text-ink-3">Optional — the form’s own questions, a referral, projects not on your CV, a portfolio…</span>
               </span>
-              <span className="t-label-s text-ink-accent">{showExtras ? "Hide" : note || extraFiles.length ? `${extraFiles.length ? `${extraFiles.length} file${extraFiles.length > 1 ? "s" : ""}` : "Note"} added` : "Add"}</span>
+              <span className="t-label-s text-ink-accent">
+                {showExtras ? "Hide" : note || extraFiles.length || formQs ? [formQs && "questions", note && "note", extraFiles.length && `${extraFiles.length} file${extraFiles.length > 1 ? "s" : ""}`].filter(Boolean).join(" · ") + " added" : "Add"}
+              </span>
             </button>
             <AnimatePresence initial={false}>
               {showExtras && (
                 <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="flex flex-col gap-3 overflow-hidden">
+                  <label className="flex flex-col gap-1.5">
+                    <span className="t-label-s text-ink">Questions from the application form</span>
+                    <textarea
+                      value={formQs}
+                      onChange={(e) => setFormQs(e.target.value)}
+                      disabled={live}
+                      rows={3}
+                      placeholder={"1. Why do you want to join us? (max 600 characters)\n2. Describe a project you're proud of. (150 words)\n3. What is your notice period?"}
+                      className="resize-y rounded-xl border border-line bg-subtle px-3.5 py-3 t-body-s text-ink outline-none placeholder:text-ink-3 focus:border-accent focus:shadow-ring"
+                    />
+                    <span className="t-body-s text-ink-3">Claude answers them right after tailoring — within each limit. You can add more later on the job page.</span>
+                  </label>
+                  <span className="t-label-s text-ink">Context for Claude</span>
                   <textarea
                     value={note}
                     onChange={(e) => setNote(e.target.value)}
@@ -576,6 +601,20 @@ function OutputPanel({
             {finished && job.checks && <ChecksList checks={job.checks} revisions={job.revisions} compact />}
             {job.keywords && <Keywords k={job.keywords} />}
             {finished && <ResearchCard research={job.research} compact />}
+            {finished && !!job.formAnswers?.items.length && (
+              <Link href={`/jobs/${job.slug}?tab=answers`} className="flex items-center gap-3 rounded-2xl bg-subtle px-4 py-3 transition-colors hover:bg-muted">
+                <ClipboardList className="size-[18px] text-accent" strokeWidth={1.75} />
+                <span className="flex-1">
+                  <span className="block t-label text-ink">
+                    {job.formAnswers.items.length} form question{job.formAnswers.items.length === 1 ? "" : "s"} answered
+                  </span>
+                  <span className="block t-body-s text-ink-3">
+                    {job.formAnswers.items.some((a) => a.needsInput) ? "Some need a detail only you know — " : "Ready to copy — "}open the Form answers tab
+                  </span>
+                </span>
+                <ArrowRight className="size-4 text-ink-3" strokeWidth={2} />
+              </Link>
+            )}
             {finished && (
               <div className="rounded-2xl border border-accent/25 p-4">
                 <ClaudeAssist slug={job.slug} questions={job.questions} suggestions={job.suggestions} onStarted={onFollowUp} compact />

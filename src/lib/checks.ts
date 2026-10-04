@@ -216,6 +216,53 @@ export function runBuildChecks(i: { resume: string; sources: string; academic?: 
   return checks;
 }
 
+// ───────────────────────── Application form answers ─────────────────────────
+
+type AnswerItem = { id: string; question: string; answer: string; limit?: { n: number; unit: "characters" | "words" }; needsInput?: string };
+
+/** "(max 500 characters)", "in 150 words or less", "Limit: 1,000 chars" → { n, unit } */
+export function parseLimit(question: string): AnswerItem["limit"] {
+  const m = /(\d[\d,]*)\s*(characters?|chars?|words?)\b/i.exec(question);
+  if (!m) return undefined;
+  return { n: Number(m[1].replace(/,/g, "")), unit: /^w/i.test(m[2]) ? "words" : "characters" };
+}
+
+export function answerLength(answer: string, unit: "characters" | "words") {
+  return unit === "words" ? answer.split(/\s+/).filter(Boolean).length : answer.length;
+}
+
+export function runAnswerChecks(i: { items: AnswerItem[]; questionsText: string; sources: string; humanVoice?: boolean }): CheckResult[] {
+  const checks: CheckResult[] = [];
+  const label = (it: AnswerItem, idx: number) => `Q${idx + 1}`;
+
+  // Every pasted question answered (or flagged as needing the user's input)
+  const unanswered = i.items.filter((it) => !it.answer.trim() && !it.needsInput);
+  checks.push({ id: "complete", label: "Every question answered", ok: unanswered.length === 0 && i.items.length > 0, detail: i.items.length ? (unanswered.length ? `Empty: ${unanswered.map((it) => it.question.slice(0, 40)).join("; ")}` : `${i.items.length} answers`) : "No answers written", blocking: true });
+
+  // Word / character limits (Claude's parse, or ours from the question text)
+  const over = i.items
+    .map((it, idx) => {
+      const lim = it.limit ?? parseLimit(it.question);
+      if (!lim) return null;
+      const len = answerLength(it.answer, lim.unit);
+      return len > lim.n ? `${label(it, idx)}: ${len}/${lim.n} ${lim.unit}` : null;
+    })
+    .filter(Boolean) as string[];
+  checks.push({ id: "limits", label: "Within each limit", ok: over.length === 0, detail: over.length ? over.join(" · ") : undefined, blocking: true });
+
+  // No numbers the candidate never gave us
+  const known = new Set(numbers(`\n\n${i.sources}\n${i.questionsText}`));
+  const invented = [...new Set(i.items.flatMap((it) => numbers(`\n\n${it.answer}`)).filter((n) => !known.has(n)))];
+  checks.push({ id: "numbers", label: "No new numbers or claims", ok: invented.length === 0, detail: invented.length ? `Not in your resume, facts or the job post: ${invented.join(", ")}` : undefined, blocking: true });
+
+  // Sounds like a person
+  if (i.humanVoice !== false) {
+    const tells = i.items.flatMap((it, idx) => aiTells(it.answer).map((t) => `${label(it, idx)} “${t}”`));
+    checks.push({ id: "voice", label: "Sounds like you, not AI", ok: tells.length === 0, detail: tells.length ? tells.slice(0, 8).join(", ") : undefined, blocking: true });
+  }
+  return checks;
+}
+
 export function issuesForClaude(checks: CheckResult[]): string {
   return checks
     .filter((c) => !c.ok && c.blocking)
@@ -239,6 +286,10 @@ export function issuesForClaude(checks: CheckResult[]): string {
           return `- ${c.detail}.`;
         case "education":
           return `- ${c.detail}.`;
+        case "limits":
+          return `- Over the limit: ${c.detail}. Shorten those answers to stay under ~95% of the limit — cut filler, keep the specific proof.`;
+        case "complete":
+          return `- ${c.detail}. Answer every question, or mark it "needsInput" if only the candidate knows the answer.`;
         case "result":
           return `- result.json is missing or invalid — rewrite it with the exact shape from the skill.`;
         default:
