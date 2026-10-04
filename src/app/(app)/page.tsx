@@ -68,7 +68,7 @@ export default async function Dashboard() {
           <Kpi label="Avg. match" value={s.avgMatch} suffix="%" delta={s.avgBefore ? `up from ${s.avgBefore}%` : "after tailoring"} spark={s.daily} />
         </Stagger>
 
-        <div className="grid grid-cols-[1.4fr_1fr] gap-4">
+        <div className="grid grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] gap-4">
           <Card className="flex flex-col gap-[18px] p-6">
             <CardHeader title="Pipeline" aside="All time" />
             {funnel.map((f, i) => {
@@ -105,7 +105,7 @@ export default async function Dashboard() {
           </Card>
         </div>
 
-        <div className="grid flex-1 grid-cols-[1.4fr_1fr] gap-4">
+        <div className="grid flex-1 grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] gap-4">
           <Card className="flex flex-col p-3">
             <CardHeader
               className="px-3 py-2"

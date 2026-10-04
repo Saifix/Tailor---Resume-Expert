@@ -177,6 +177,8 @@ body {
   color: var(--color-text-primary);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  /* Long unbroken strings (URLs, file paths, keyword lists) wrap instead of widening the page. */
+  overflow-wrap: anywhere;
 }
 ::selection { background: var(--iris-200); color: var(--neutral-900); }
 :focus-visible { outline: none; box-shadow: var(--ring-focus); border-radius: 8px; }

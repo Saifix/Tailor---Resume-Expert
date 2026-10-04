@@ -106,7 +106,7 @@ export default async function JobPage(props: PageProps<"/jobs/[slug]">) {
           ))}
         </nav>
 
-        <div className="grid flex-1 grid-cols-[1fr_330px] gap-5">
+        <div className="grid flex-1 grid-cols-[minmax(0,1fr)_330px] gap-5">
           {tab.id === "answers" ? (
             <FormAnswersPanel slug={slug} items={job.formAnswers?.items ?? []} checks={job.formAnswers?.checks} company={job.company} />
           ) : tab.id === "notes" ? (

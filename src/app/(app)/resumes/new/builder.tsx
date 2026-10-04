@@ -91,7 +91,7 @@ export function BuilderStudio({ userName, initialBuild, initialRunId, web }: { u
   const finished = !live && !!view?.resume && b?.status === "ready";
 
   return (
-    <div className="grid flex-1 grid-cols-[minmax(440px,520px)_1fr] gap-5 px-10 pb-8 pt-7">
+    <div className="grid flex-1 grid-cols-[minmax(440px,520px)_minmax(0,1fr)] gap-5 px-10 pb-8 pt-7">
       {/* ─── Input ─── */}
       <div className="flex flex-col gap-4">
         {initialBuild && !about ? (
@@ -193,7 +193,7 @@ export function BuilderStudio({ userName, initialBuild, initialRunId, web }: { u
       {!slug ? (
         <IdleBuilder web={web} />
       ) : (
-        <section className={cx("card flex min-h-0 flex-col gap-[18px] p-6", live && "ring-1 ring-accent/25")}>
+        <section className={cx("card flex min-h-0 min-w-0 flex-col gap-[18px] p-6", live && "ring-1 ring-accent/25")}>
           <div className="flex items-center gap-2.5">
             <span className="flex items-center gap-2 rounded-full border border-line-subtle bg-surface py-1.5 pl-2.5 pr-3 shadow-e1">
               <span className="relative grid size-3.5 place-items-center">
@@ -247,7 +247,7 @@ export function BuilderStudio({ userName, initialBuild, initialRunId, web }: { u
                     compact
                   />
                 </div>
-                <div className="flex items-center gap-2.5">
+                <div className="flex flex-wrap items-center gap-2.5">
                   <span className="flex-1 truncate t-mono-s text-ink-2">resumes/{b.file}</span>
                   <ButtonLink href={`/resumes/${encodeURIComponent(b.file)}`} variant="secondary" size="s">
                     Open

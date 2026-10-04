@@ -20,7 +20,7 @@ export default async function RemindersPage() {
     <>
       <TopBar eyebrow="Follow-ups and interview prep" title="Reminders" unread={shell.unread} actions={<EnableNotifications />} />
       <PageBody>
-        <div className="grid grid-cols-[1fr_380px] gap-5">
+        <div className="grid grid-cols-[minmax(0,1fr)_380px] gap-5">
           <Card className="flex flex-col gap-5 p-6">
             {groups.length ? (
               groups.map((g) => (

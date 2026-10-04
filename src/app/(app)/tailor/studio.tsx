@@ -169,7 +169,7 @@ export function TailorStudio({
   const canSubmit = (jd.trim().length >= 80 || (linkOnly && defaults.web)) && !!base && !live;
 
   return (
-    <div className="grid flex-1 grid-cols-[minmax(420px,500px)_1fr] gap-5 px-10 pb-8 pt-7">
+    <div className="grid flex-1 grid-cols-[minmax(420px,500px)_minmax(0,1fr)] gap-5 px-10 pb-8 pt-7">
       {/* ─── Input column ─── */}
       <div className="flex flex-col gap-4">
         <section className="card flex flex-col gap-3.5 p-[22px]">
@@ -504,7 +504,7 @@ function OutputPanel({
   if (!hasRun) return <IdlePanel />;
 
   return (
-    <section className={cx("card flex min-h-0 flex-col gap-[18px] p-6", live && "ring-1 ring-accent/25")}>
+    <section className={cx("card flex min-h-0 min-w-0 flex-col gap-[18px] p-6", live && "ring-1 ring-accent/25")}>
       {/* header */}
       <div className="flex items-center gap-2.5">
         <span className="flex items-center gap-2 rounded-full border border-line-subtle bg-surface py-1.5 pl-2.5 pr-3 shadow-e1">
@@ -622,9 +622,9 @@ function OutputPanel({
             )}
             {view && view.diff.length > 0 && <DiffPreview diff={view.diff} live={live} />}
             {finished && (
-              <div className="flex items-center gap-2.5">
+              <div className="flex flex-wrap items-center gap-2.5">
                 <Folder className="size-4 shrink-0 text-ink-3" strokeWidth={1.75} />
-                <span className="flex-1 truncate t-mono-s text-ink-2">jobs/{job.slug}/</span>
+                <span className="min-w-[160px] flex-1 truncate t-mono-s text-ink-2">jobs/{job.slug}/</span>
                 <a href={`/api/jobs/${job.slug}/export?format=docx`} className={buttonClass("secondary", "s")}>
                   <Download strokeWidth={1.75} /> Word
                 </a>
@@ -732,7 +732,7 @@ function DiffPreview({ diff, live }: { diff: DiffLine[]; live: boolean }) {
             <span className={cx("w-2.5 shrink-0", d.kind === "add" ? "text-ok" : d.kind === "del" ? "text-bad" : "text-ink-3")}>
               {d.kind === "add" ? "+" : d.kind === "del" ? "−" : " "}
             </span>
-            <span className={cx("whitespace-pre-wrap break-words", d.kind === "del" ? "text-bad line-through" : "text-ink")}>{d.text}</span>
+            <span className={cx("min-w-0 whitespace-pre-wrap break-words", d.kind === "del" ? "text-bad line-through" : "text-ink")}>{d.text}</span>
           </motion.div>
         ))}
         {live && <span className="caret mx-3.5 inline-block h-4 w-2 rounded-sm bg-accent align-middle" />}

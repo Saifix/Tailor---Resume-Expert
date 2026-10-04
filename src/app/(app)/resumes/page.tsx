@@ -29,7 +29,7 @@ export default async function ResumesPage() {
     <>
       <TopBar eyebrow="Your base CVs, skills and files" title="Resumes" unread={shell.unread} />
       <PageBody className="gap-5">
-        <div className="grid grid-cols-[1fr_300px] gap-4">
+        <div className="grid grid-cols-[minmax(0,1fr)_300px] gap-4">
           <Uploader />
           <Link href="/resumes/new" className="card group flex flex-col justify-center gap-1.5 p-5 transition-shadow hover:shadow-e2">
             <span className="flex items-center gap-2 t-h3 text-ink">
@@ -39,7 +39,7 @@ export default async function ResumesPage() {
             <span className="t-label-s text-ink-accent group-hover:underline">Build it with Claude →</span>
           </Link>
         </div>
-        <div className="grid flex-1 grid-cols-[1fr_400px] gap-5">
+        <div className="grid flex-1 grid-cols-[minmax(0,1fr)_400px] gap-5">
           <div className="flex flex-col gap-5">
             <div className="flex items-center justify-between">
               <h2 className="t-h3 text-ink">Base resumes</h2>

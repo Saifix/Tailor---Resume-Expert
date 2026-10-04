@@ -16,7 +16,7 @@ export default async function SettingsPage() {
     <>
       <TopBar eyebrow="Local preferences" title="Settings" unread={shell.unread} />
       <PageBody>
-        <div className="grid max-w-[1040px] grid-cols-[1fr_320px] gap-5">
+        <div className="grid max-w-[1040px] grid-cols-[minmax(0,1fr)_320px] gap-5">
           <Card className="p-6">
             <SettingsForm userName={settings.userName} claude={{ ...settings.claude, model: settings.claude?.model ?? settings.model }} dictationLanguage={settings.dictation?.language} />
           </Card>

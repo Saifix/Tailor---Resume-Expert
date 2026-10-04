@@ -64,7 +64,7 @@ export function OutreachStudio({
   const parsedName = item && item.drafts.length ? item.name : null;
 
   return (
-    <div className="grid flex-1 grid-cols-[minmax(420px,480px)_1fr] gap-5 px-10 pb-8 pt-7">
+    <div className="grid flex-1 grid-cols-[minmax(420px,480px)_minmax(0,1fr)] gap-5 px-10 pb-8 pt-7">
       <div className="flex flex-col gap-4">
         <section className="card flex flex-col gap-3.5 p-[22px]">
           <div className="flex items-center gap-2">
