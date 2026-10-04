@@ -14,8 +14,10 @@ export function ClaudeAssist({
   suggestions = [],
   onStarted,
   compact = false,
+  endpoint,
 }: {
   slug: string;
+  endpoint?: string; // defaults to the job follow-up API
   questions?: ClaudeQuestion[];
   suggestions?: string[];
   onStarted?: (runId: string) => void;
@@ -32,7 +34,7 @@ export function ClaudeAssist({
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`/api/jobs/${slug}/followup`, {
+      const res = await fetch(endpoint ?? `/api/jobs/${slug}/followup`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

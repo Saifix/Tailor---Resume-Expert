@@ -11,7 +11,11 @@
 - **Researches online.** Claude looks up the company and finds current learning links and interview-prep reading for your gaps, all cited.
 - **Resumes, academic CVs and cover letters**, written in plain, human language. Stock AI phrasing is caught and rewritten automatically.
 - **Fully configurable Claude Code**: model, effort, fallback model, web access, standing instructions, and whether to load your own `~/.claude` settings.
-- **Voice dictation** into any text field, using the browser's built-in speech recognition.
+- **Voice dictation** into any text field, using the browser's built-in speech recognition. The mic appears on focus or hover.
+- **No CV yet?** "Build my first resume": describe yourself (type or dictate, any language) and attach anything you have, such as a LinkedIn PDF, certificates, transcripts, screenshots or old CVs.
+  - Claude records the facts it finds in your documents in `extracted.md`.
+  - It builds a truthful first resume, self-checks it, and asks you questions to improve it.
+- **Extra context when applying.** Add an optional note (a referral, why this company, projects not on your CV) and documents to any application. Claude treats them as true for that job only.
 
 Design: [Figma: brand book, components & screens](https://www.figma.com/design/Dl9gT4Gizx3chdIiN393oV)
 
@@ -99,7 +103,8 @@ Steps, checks and questions stream to the browser over server-sent events (`/api
 ~/Tailor
 ├─ resumes/                 base resumes (Markdown), your source of truth
 │  ├─ facts.md              answers you gave Claude (reused as true facts)
-│  └─ original/             uploaded PDF / Word / images
+│  ├─ original/             uploaded PDF / Word / images
+│  └─ sources/<you>/        "build my first resume": about.md, intake.md, your documents, extracted.md
 ├─ jobs/<date>_<company>_<role>/
 │  ├─ job-description.md
 │  ├─ resume.md             tailored resume (download as PDF or Word)
@@ -107,10 +112,11 @@ Steps, checks and questions stream to the browser over server-sent events (`/api
 │  ├─ cover-letter.md       if enabled
 │  ├─ result.json           match score, keywords, questions (written by the skill)
 │  ├─ meta.json             status, timeline, reminders, quality checks
+│  ├─ extras/               optional context for this application (note + documents)
 │  └─ notes.md
 ├─ outreach/<name>.md       LinkedIn drafts
 ├─ .claude/skills/          resume-tailor, academic-cv, cover-letter, human-voice, job-research,
-│                           ats-keywords, impact-bullets, outreach-writer, resume-import
+│                           resume-builder, ats-keywords, impact-bullets, outreach-writer, resume-import
 └─ tailor.json              settings (name, model, disabled skills)
 ```
 

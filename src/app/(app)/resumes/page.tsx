@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Folder, Plus, Sparkles, SquareTerminal } from "lucide-react";
+import { Folder, Plus, Sparkles, SquareTerminal, Wand2 } from "lucide-react";
 import { MakeDefault, SkillToggles } from "./client";
 import { Uploader } from "./uploader";
 import { PageBody, TopBar } from "@/components/topbar";
@@ -29,7 +29,16 @@ export default async function ResumesPage() {
     <>
       <TopBar eyebrow="Your base CVs, skills and files" title="Resumes" unread={shell.unread} />
       <PageBody className="gap-5">
-        <Uploader />
+        <div className="grid grid-cols-[1fr_300px] gap-4">
+          <Uploader />
+          <Link href="/resumes/new" className="card group flex flex-col justify-center gap-1.5 p-5 transition-shadow hover:shadow-e2">
+            <span className="flex items-center gap-2 t-h3 text-ink">
+              <Wand2 className="size-[18px] text-accent" strokeWidth={1.75} /> No CV yet?
+            </span>
+            <span className="t-body-s text-ink-2">Describe yourself — type or dictate — attach any documents, and Claude builds your first resume.</span>
+            <span className="t-label-s text-ink-accent group-hover:underline">Build it with Claude →</span>
+          </Link>
+        </div>
         <div className="grid flex-1 grid-cols-[1fr_400px] gap-5">
           <div className="flex flex-col gap-5">
             <div className="flex items-center justify-between">

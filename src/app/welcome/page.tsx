@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { Metadata } from "next";
 import { ArrowUpRight, Check } from "lucide-react";
 import { NameField } from "./name-field";
@@ -64,7 +65,16 @@ export default async function Welcome() {
               <Check className="size-4" strokeWidth={2.5} /> {resumes.length} base resume{resumes.length > 1 ? "s" : ""} ready
             </p>
           ) : (
-            <Uploader compact />
+            <div className="flex flex-col gap-2.5">
+              <Uploader compact />
+              <Link href="/resumes/new" className="flex items-center justify-between rounded-2xl bg-accent-subtle px-5 py-3.5 ring-1 ring-accent/30 transition-colors hover:bg-accent-subtle/70">
+                <span>
+                  <span className="block t-label text-ink">Don’t have a CV?</span>
+                  <span className="block t-body-s text-ink-2">Tell Claude about yourself and attach any documents — it builds your first one.</span>
+                </span>
+                <span className="t-label-s text-ink-accent">Start →</span>
+              </Link>
+            </div>
           )}
           <div className="flex items-center gap-3.5">
             <ButtonLink href="/">

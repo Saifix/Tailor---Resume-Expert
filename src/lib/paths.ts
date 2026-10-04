@@ -10,6 +10,7 @@ export const dirs = {
   root: TAILOR_HOME,
   resumes: path.join(TAILOR_HOME, "resumes"),
   originals: path.join(TAILOR_HOME, "resumes", "original"),
+  sources: path.join(TAILOR_HOME, "resumes", "sources"), // "build my first resume" inputs, one folder per build
   jobs: path.join(TAILOR_HOME, "jobs"),
   outreach: path.join(TAILOR_HOME, "outreach"),
   skills: path.join(TAILOR_HOME, ".claude", "skills"),

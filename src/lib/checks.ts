@@ -178,6 +178,44 @@ export function runChecks(i: CheckInput): CheckResult[] {
   return checks;
 }
 
+/** Checks for a first resume built from the user's description + documents (sources = everything they gave us). */
+export function runBuildChecks(i: { resume: string; sources: string; academic?: boolean; humanVoice?: boolean }): CheckResult[] {
+  const checks: CheckResult[] = [];
+  const ls = lines(i.resume).filter((l) => l.trim());
+  const nameOk = /^#\s+\S/.test(ls[0] ?? "");
+  const contactOk = /@|\+?\d[\d\s()-]{7,}|linkedin|github|https?:\/\//i.test(ls[1] ?? "");
+  checks.push({ id: "identity", label: "Name & contact line", ok: nameOk && contactOk, detail: nameOk && contactOk ? undefined : "Start with “# Full Name” and a contact line (email, phone or a profile link)", blocking: true });
+
+  const secs = sections(i.resume);
+  const has = (re: RegExp) => secs.some((s) => re.test(s));
+  const missing = [
+    !has(/experience|employment|work|projects|volunteer|research/) && "Experience or Projects",
+    !has(/skills|expertise|tools/) && "Skills",
+  ].filter(Boolean) as string[];
+  checks.push({ id: "sections", label: "Core sections present", ok: missing.length === 0, detail: missing.length ? `Missing: ${missing.join(", ")}` : `${secs.length} sections`, blocking: true });
+  if (!has(/education|qualifications|training|courses/)) checks.push({ id: "education", label: "Education", ok: false, detail: "No education section — fine if you have none, otherwise add it", blocking: false });
+
+  const known = new Set(numbers(`\n\n${i.sources}`));
+  const invented = [...new Set(numbers(i.resume).filter((n) => !known.has(n)))];
+  checks.push({ id: "numbers", label: "Only facts you gave", ok: invented.length === 0, detail: invented.length ? `Not in your description or documents: ${invented.join(", ")}` : "Every number comes from what you told Claude", blocking: true });
+
+  const wc = words(i.resume);
+  if (!i.academic) checks.push({ id: "length", label: "Two pages or less", ok: wc <= 1100, detail: `${wc} words`, blocking: true });
+
+  const ats: string[] = [];
+  if (/^\s*\|.*\|\s*$/m.test(i.resume)) ats.push("table");
+  if (/<[a-z][^>]*>/i.test(i.resume)) ats.push("HTML");
+  if (/!\[/.test(i.resume)) ats.push("image");
+  if (/\p{Extended_Pictographic}/u.test(i.resume)) ats.push("emoji");
+  checks.push({ id: "ats", label: "ATS-safe formatting", ok: ats.length === 0, detail: ats.length ? `Found: ${ats.join(", ")}` : undefined, blocking: true });
+
+  if (i.humanVoice !== false) {
+    const tells = aiTells(i.resume);
+    checks.push({ id: "voice", label: "Sounds human", ok: tells.length === 0, detail: tells.length ? `AI-sounding: ${tells.slice(0, 6).join(", ")}` : undefined, blocking: false });
+  }
+  return checks;
+}
+
 export function issuesForClaude(checks: CheckResult[]): string {
   return checks
     .filter((c) => !c.ok && c.blocking)
@@ -198,6 +236,8 @@ export function issuesForClaude(checks: CheckResult[]): string {
         case "length":
           return `- Length: ${c.detail}. Cut filler and generic sentences first; keep the specific proof.`;
         case "signoff":
+          return `- ${c.detail}.`;
+        case "education":
           return `- ${c.detail}.`;
         case "result":
           return `- result.json is missing or invalid — rewrite it with the exact shape from the skill.`;

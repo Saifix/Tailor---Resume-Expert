@@ -1,11 +1,31 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { createRun, emit, exec, finishRun, setPhase, subscribe, type ClaudeConfig, type ExecResult, type Phase, type Run, type RunEvent } from "./claude";
-import { aiTells, issuesForClaude, runChecks, runLetterChecks } from "./checks";
+import { aiTells, issuesForClaude, runBuildChecks, runChecks, runLetterChecks } from "./checks";
 import { countPages, renderPdf } from "./pdf";
 import { dirs, rel } from "./paths";
-import { applyTailorResult, ensureHome, getClaudeConfig, getFacts, getJob, getOutreach, getResume, getSettings, jobDir, listSkills, readText, saveOutreach, updateJob } from "./store";
-import type { JobMeta, OutreachItem } from "./types";
+import {
+  applyTailorResult,
+  buildDir,
+  buildForResume,
+  ensureHome,
+  getBuild,
+  getClaudeConfig,
+  getFacts,
+  getJob,
+  getOutreach,
+  getResume,
+  getSettings,
+  jobDir,
+  listSkills,
+  readText,
+  saveOutreach,
+  saveSettings,
+  updateBuild,
+  updateJob,
+} from "./store";
+import type { BuildMeta, ClaudeQuestion, JobMeta, OutreachItem } from "./types";
+import { readTextFiles } from "./uploads";
 
 /** How many times Claude may fix its own work after the self-check before we hand it to the user. */
 const MAX_REVISIONS = 2;
@@ -91,7 +111,14 @@ async function tailorFlow(run: Run, job: JobMeta, opts: TailorOpts) {
   const folder = rel(jobDir(job.slug)) + "/";
   const options = job.skills.filter((s) => s === "one-page" || s === "match-report" || installed.has(s));
   const pageLimit = pageLimitFor(job);
-  const extras = { web: cfg.web && installed.has("job-research"), humanVoice: cfg.humanVoice && installed.has("human-voice"), academic: job.docType === "academic" };
+  const build = await buildForResume(job.baseResume);
+  const extras: Extras = {
+    web: cfg.web && installed.has("job-research"),
+    humanVoice: cfg.humanVoice && installed.has("human-voice"),
+    academic: job.docType === "academic",
+    extrasDir: job.extras && (job.extras.note || job.extras.files.length) ? `${folder}extras/` : undefined,
+    sourcesDir: build ? `${rel(buildDir(build.slug))}/` : undefined,
+  };
   const write = [`${folder}resume.md`, options.includes("match-report") && `${folder}match-report.md`, options.includes("cover-letter") && `${folder}cover-letter.md`, `${folder}result.json`].filter(Boolean).join(", ");
 
   const phaseDefs = [
@@ -200,7 +227,15 @@ export async function checkJob(slug: string, origin: string) {
     result = rawResult ? JSON.parse(rawResult) : null;
   } catch {}
   const { humanVoice } = await getClaudeConfig();
-  return runChecks({ base: base ?? "", tailored: tailored ?? "", facts, pageLimit: pageLimitFor(job), pages, result, humanVoice });
+  const known = [facts, await candidateExtras(job)].join("\n");
+  return runChecks({ base: base ?? "", tailored: tailored ?? "", facts: known, pageLimit: pageLimitFor(job), pages, result, humanVoice });
+}
+
+/** Everything else the candidate told us that counts as true: per-job extras + first-resume sources. */
+async function candidateExtras(job: JobMeta) {
+  const build = await buildForResume(job.baseResume);
+  const [extras, sources] = await Promise.all([readTextFiles(path.join(jobDir(job.slug), "extras")), build ? readTextFiles(buildDir(build.slug)) : ""]);
+  return `${extras}\n${sources}`;
 }
 
 // ───────────────────────────── Cover letter (on demand) ─────────────────────────────
@@ -224,6 +259,7 @@ export async function startCoverLetter(job: JobMeta, opts: { origin: string; ins
       `- Job description: ${folder}job-description.md`,
       `- Tailored ${academic ? "CV" : "resume"}: ${folder}resume.md (fall back to resumes/${job.baseResume} if missing)`,
       `- Extra facts: resumes/facts.md (if it exists)`,
+      job.extras && (job.extras.note || job.extras.files.length) ? `- Extra context the candidate added for this application: ${folder}extras/ (true facts — a referral or a reason to apply belongs in the letter)` : ``,
       research,
       cfg.web && installed.has("job-research") ? `- Web access is ON: if you need one company-specific detail (product, initiative, recent news), look it up — cite nothing you didn't read.` : ``,
       existing && opts.instruction ? `- Current letter: ${folder}cover-letter.md — change it as asked: ${opts.instruction}` : opts.instruction ? `- Also: ${opts.instruction}` : ``,
@@ -276,11 +312,11 @@ export async function checkLetter(slug: string, humanVoice = true) {
     readText(path.join(dir, "job-description.md")),
   ]);
   const name = /^#\s+(.+)$/m.exec(resume ?? base ?? "")?.[1]?.trim();
-  const sources = [resume, base, facts, jd, JSON.stringify(job.research ?? {})].filter(Boolean).join("\n");
+  const sources = [resume, base, facts, jd, JSON.stringify(job.research ?? {}), await candidateExtras(job)].filter(Boolean).join("\n");
   return runLetterChecks({ letter: letter ?? "", sources, name, academic: job.docType === "academic", humanVoice });
 }
 
-type Extras = { web: boolean; humanVoice: boolean; academic: boolean };
+type Extras = { web: boolean; humanVoice: boolean; academic: boolean; extrasDir?: string; sourcesDir?: string };
 
 function draftPrompt(folder: string, job: JobMeta, options: string[], write: string, pageLimit: number, x: Extras) {
   return [
@@ -292,6 +328,12 @@ function draftPrompt(folder: string, job: JobMeta, options: string[], write: str
     `- Job description: ${folder}job-description.md`,
     `- Base ${x.academic ? "CV" : "resume"}: resumes/${job.baseResume}`,
     `- Extra facts from the user (if the file exists): resumes/facts.md`,
+    x.sourcesDir
+      ? `- More true facts about the candidate (what they shared when building their first resume): ${x.sourcesDir}about.md, ${x.sourcesDir}intake.md and ${x.sourcesDir}extracted.md`
+      : ``,
+    x.extrasDir
+      ? `- Extra context for THIS application from the candidate (true facts — use what's relevant): ${x.extrasDir} — read context.md and every attached document. If you use a fact from a PDF or image there, also write it down in ${x.extrasDir}extracted.md (one bullet per fact, numbers exactly as in the document).`
+      : ``,
     `- Enabled options: ${options.join(", ") || "none"}`,
     pageLimit ? `- Page limit: ${pageLimit} page${pageLimit > 1 ? "s" : ""} on A4` : `- Page limit: none (academic CV) — but put the strongest material first`,
     x.humanVoice ? `- Writing voice: follow the human-voice skill for every sentence you write.` : ``,
@@ -426,6 +468,129 @@ async function writeOutreachRequest(item: OutreachItem, profile: string, default
     "```",
   ].join("\n");
   await fs.writeFile(path.join(dirs.outreach, `${item.slug}.request.md`), req, "utf8");
+}
+
+// ───────────────────────────── Build my first resume ─────────────────────────────
+
+type BuildOpts = { followUp?: { kind: "answers" | "revise"; text: string } };
+
+/** Turn a description + documents into a first base resume. Same loop as tailoring: draft → self-check → fix → questions. */
+export async function startBuild(build: BuildMeta, opts: BuildOpts = {}): Promise<Run> {
+  await ensureHome();
+  const run = createRun("import", build.file);
+  await updateBuild(build.slug, { status: "building", lastRunId: run.id, lastError: undefined });
+  void buildFlow(run, build, opts).catch(async (e) => {
+    emit(run, { type: "log", text: (e as Error).message, at: Date.now() });
+    await updateBuild(build.slug, { status: "error", lastError: (e as Error).message }).catch(() => {});
+    finishRun(run, false);
+  });
+  return run;
+}
+
+async function buildFlow(run: Run, build: BuildMeta, opts: BuildOpts) {
+  const cfg = await getClaudeConfig();
+  const installed = await enabledSkillNames();
+  const src = `${rel(buildDir(build.slug))}/`;
+  const target = `resumes/${build.file}`;
+  const humanVoice = cfg.humanVoice && installed.has("human-voice");
+  const academic = build.docType === "academic";
+
+  let res: ExecResult;
+  if (opts.followUp && build.sessionId) {
+    setPhase(run, { id: "followup", label: opts.followUp.kind === "answers" ? "Adding your answers" : "Applying your request", state: "active" });
+    res = await exec(
+      run,
+      [
+        opts.followUp.kind === "answers"
+          ? `Here are my answers (also saved to resumes/facts.md — they are true facts you can use):\n\n${opts.followUp.text}`
+          : `Please change my resume: ${opts.followUp.text}\n\nIf this states a new fact about me, first append it to resumes/facts.md, then use it.`,
+        ``,
+        `Update ${target}, ${src}extracted.md (if new facts) and ${src}result.json following the resume-builder skill. Drop questions that are answered; only ask new ones that genuinely matter. Reply with one short line.`,
+      ].join("\n"),
+      { ...cfg, resume: build.sessionId },
+    );
+    setPhase(run, { id: "followup", label: opts.followUp.kind === "answers" ? "Adding your answers" : "Applying your request", state: res.ok ? "done" : "error" });
+  } else {
+    const defs = [
+      { id: "read", label: "Reading what you shared", match: (e: { name: string; target?: string }) => e.name === "Read" && (e.target ?? "").startsWith(src) },
+      { id: "facts", label: "Noting facts from your documents", match: (e: { name: string; target?: string }) => /Write|Edit/.test(e.name) && /extracted\.md$/.test(e.target ?? "") },
+      { id: "write", label: "Writing your resume", match: (e: { name: string; target?: string }) => /Write|Edit/.test(e.name) && (e.target ?? "") === target },
+      { id: "questions", label: "Preparing questions for you", match: (e: { target?: string }) => (e.target ?? "") === `${src}result.json` },
+    ];
+    for (const d of defs) setPhase(run, { id: d.id, label: d.label, state: "todo" });
+    const stop = trackPhases(run, defs);
+    res = await exec(
+      run,
+      [
+        `Use the resume-builder skill${humanVoice ? " and the human-voice skill" : ""} to build a first ${academic ? "academic CV" : "resume"} for someone who doesn't have one yet.`,
+        ``,
+        `- Everything they shared: ${src} — about.md (their own words), intake.md (contact details, target role, preferences) and any documents (PDF, images, Word conversions *.docx.md, text).`,
+        `- Format: ${academic ? "academic CV (also follow the academic-cv skill's section rules)" : "industry resume"}${build.region ? ` · region: ${build.region}` : ""}`,
+        `- Write ${src}extracted.md (facts from the documents), then ${target}, then ${src}result.json.`,
+        cfg.web && build.targetRole ? `- Web access is ON: you may look up what employers expect for "${build.targetRole}" to pick the right emphasis and section order — never add skills or facts the person didn't give.` : ``,
+        `Only read and write files inside the current directory.`,
+      ]
+        .filter(Boolean)
+        .join("\n"),
+      cfg,
+    );
+    stop();
+    closePhases(run);
+  }
+  let sessionId = res.sessionId ?? build.sessionId;
+  if (!res.ok) {
+    await updateBuild(build.slug, { status: (await readText(path.join(dirs.resumes, build.file))) ? "ready" : "error", lastError: res.stopped ? "Stopped before finishing" : res.error || "Claude didn’t finish", sessionId });
+    return finishRun(run, false);
+  }
+
+  // Self-check → fix
+  let revisions = 0;
+  for (let round = 1; ; round++) {
+    setPhase(run, { id: `check-${round}`, label: round === 1 ? "Self-check: facts, sections, format" : `Re-check (round ${round})`, state: "active" });
+    const checks = await checkBuild(build.slug, humanVoice);
+    emit(run, { type: "checks", checks, round, at: Date.now() });
+    const failing = checks.filter((c) => !c.ok && c.blocking);
+    setPhase(run, {
+      id: `check-${round}`,
+      label: round === 1 ? "Self-check: facts, sections, format" : `Re-check (round ${round})`,
+      state: failing.length ? "warn" : "done",
+      detail: failing.length ? failing.map((c) => c.label).join(" · ") : `${checks.filter((c) => c.ok).length}/${checks.length} checks passed`,
+    });
+    await updateBuild(build.slug, { checks, revisions, sessionId });
+    if (!failing.length || revisions >= MAX_REVISIONS) break;
+    revisions++;
+    setPhase(run, { id: `fix-${revisions}`, label: `Fixing: ${failing.map((c) => c.label.toLowerCase()).join(", ")}`, state: "active" });
+    const fix = await exec(run, `Tailor's self-check found problems with ${target}:\n\n${issuesForClaude(checks)}\n\nOnly use facts from ${src} and resumes/facts.md. Fix with Edit and reply with one short line.`, { ...cfg, resume: sessionId });
+    sessionId = fix.sessionId ?? sessionId;
+    setPhase(run, { id: `fix-${revisions}`, label: `Fixing: ${failing.map((c) => c.label.toLowerCase()).join(", ")}`, state: fix.ok ? "done" : "error" });
+    if (!fix.ok) break;
+  }
+
+  // Questions / suggestions from result.json
+  let parsed: { name?: string; questions?: ClaudeQuestion[]; suggestions?: string[] } = {};
+  try {
+    parsed = JSON.parse((await readText(path.join(buildDir(build.slug), "result.json"))) ?? "{}");
+  } catch {}
+  const updated = await updateBuild(build.slug, {
+    status: "ready",
+    name: parsed.name || build.name,
+    questions: (parsed.questions ?? []).slice(0, 4),
+    suggestions: (parsed.suggestions ?? []).slice(0, 3),
+    sessionId,
+    revisions,
+  });
+  // First resume ever? Make it the default base resume.
+  const settings = await getSettings();
+  if (!settings.defaultResume) await saveSettings({ defaultResume: build.file });
+  if (updated.questions?.length) setPhase(run, { id: "asks", label: `Claude has ${updated.questions.length} question${updated.questions.length > 1 ? "s" : ""} to make it stronger`, state: "warn" });
+  finishRun(run, true);
+}
+
+export async function checkBuild(slug: string, humanVoice = true) {
+  const build = await getBuild(slug);
+  if (!build) return [];
+  const [resume, sources, facts] = await Promise.all([readText(path.join(dirs.resumes, build.file)), readTextFiles(buildDir(slug)), getFacts()]);
+  return runBuildChecks({ resume: resume ?? "", sources: `${sources}\n${facts}`, academic: build.docType === "academic", humanVoice });
 }
 
 // ───────────────────────────── Import ─────────────────────────────

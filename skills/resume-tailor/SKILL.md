@@ -14,10 +14,12 @@ You will be told:
 - the **page limit** (1 or 2 pages on A4)
 - `resumes/facts.md` — extra true facts the candidate told Tailor when answering earlier questions. Read it if it exists; facts there count as part of the resume.
 - whether to follow **human-voice** (writing style) and whether **web access** is on (then also follow **job-research**).
+- optionally `resumes/sources/<slug>/` — what the candidate shared when Tailor built their first resume (about.md, intake.md, extracted.md). Facts there are true and may be used.
+- optionally `<job folder>/extras/` — extra context the candidate added **for this application**: `context.md` (a note: referral, why this company, projects not on the CV, constraints) and documents (portfolio, project write-ups, references). Treat them as true facts. Use what's relevant to this job; a referral or motivation belongs in the cover letter/summary, not invented into experience. If you use a fact from a PDF or image there, note it in `<job folder>/extras/extracted.md`.
 
 ## Hard rules (never break these)
 
-1. **Never invent facts.** No new employers, titles, dates, degrees, certifications, tools the candidate never used, or metrics that aren't in the base resume or `resumes/facts.md`. You may rephrase, reorder, merge, trim and re-emphasise. If a number isn't there, describe the impact without inventing one — or ask for it (see *questions*).
+1. **Never invent facts.** No new employers, titles, dates, degrees, certifications, tools the candidate never used, or metrics that aren't in the base resume, `resumes/facts.md`, the candidate's sources folder or this job's `extras/`. You may rephrase, reorder, merge, trim and re-emphasise. If a number isn't there, describe the impact without inventing one — or ask for it (see *questions*).
 2. **Keep the candidate's identity block** (name, contact line) exactly as in the base resume. Contact details stay in the body (ATSs like Workday drop header/footer content).
 3. **ATS-safe Markdown only**, single column: `#` name, a contact line, `##` standard section headings (Summary, Experience, Projects, Skills, Education, Certifications…), `###` per role (`### Title — Company · Mon YYYY – Mon YYYY`), `-` bullets. No tables, columns, text boxes, images, icons, emojis or HTML.
 4. **No tricks.** Never add hidden/white text, keyword dumps or "instructions to the AI screener" — parsers show them to recruiters and they read as cheating.

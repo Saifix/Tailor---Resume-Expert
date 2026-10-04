@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { dirs, safeSegment, slugify } from "./paths";
 import type { ClaudeConfig } from "./claude";
-import type { JobMeta, OutreachItem, ResumeInfo, Settings, Status, TailorResult } from "./types";
+import type { BuildMeta, JobMeta, OutreachItem, ResumeInfo, Settings, Status, TailorResult } from "./types";
 
 // ---------- low-level helpers ----------
 
@@ -42,7 +42,7 @@ let ensured: Promise<void> | null = null;
 /** Create ~/Tailor and install bundled skills that aren't there yet. Never overwrites user edits. */
 export function ensureHome(): Promise<void> {
   ensured ??= (async () => {
-    for (const d of [dirs.root, dirs.resumes, dirs.originals, dirs.jobs, dirs.outreach, dirs.skills]) {
+    for (const d of [dirs.root, dirs.resumes, dirs.originals, dirs.sources, dirs.jobs, dirs.outreach, dirs.skills]) {
       await fs.mkdir(d, { recursive: true });
     }
     if (existsSync(SKILL_TEMPLATES)) {
@@ -291,6 +291,46 @@ function gapQuestions(missing: string[]) {
 }
 
 const clampPct = (n: unknown) => Math.max(0, Math.min(100, Math.round(Number(n) || 0)));
+
+// ---------- "build my first resume" ----------
+
+export function buildDir(slug: string) {
+  return path.join(dirs.sources, safeSegment(slug));
+}
+
+export async function getBuild(slug: string) {
+  return readJson<BuildMeta | null>(path.join(buildDir(slug), "build.json"), null);
+}
+
+export async function saveBuild(meta: BuildMeta) {
+  await writeJson(path.join(buildDir(meta.slug), "build.json"), meta);
+  return meta;
+}
+
+export async function updateBuild(slug: string, patch: Partial<BuildMeta>) {
+  const cur = await getBuild(slug);
+  if (!cur) throw new Error(`Build not found: ${slug}`);
+  return saveBuild({ ...cur, ...patch });
+}
+
+export async function listBuilds(): Promise<BuildMeta[]> {
+  await ensureHome();
+  const entries = await fs.readdir(dirs.sources, { withFileTypes: true });
+  const metas = await Promise.all(entries.filter((e) => e.isDirectory()).map((e) => getBuild(e.name)));
+  return metas.filter((m): m is BuildMeta => !!m).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+/** The build (if any) that produced a given base resume — its sources are extra truth for tailoring. */
+export async function buildForResume(file: string) {
+  return (await listBuilds()).find((b) => b.file === file) ?? null;
+}
+
+export function newBuildSlug(name: string) {
+  const base = slugify(name, 32) || "me";
+  let slug = base;
+  for (let i = 2; existsSync(/*turbopackIgnore: true*/ path.join(/*turbopackIgnore: true*/ dirs.sources, slug)); i++) slug = `${base}-${i}`;
+  return slug;
+}
 
 // ---------- outreach ----------
 

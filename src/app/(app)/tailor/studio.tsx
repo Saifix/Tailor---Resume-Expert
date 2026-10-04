@@ -10,6 +10,7 @@ import type { Phase, RunEvent } from "@/lib/claude";
 import { TAILOR_OPTIONS } from "@/lib/options";
 import type { JobMeta } from "@/lib/types";
 import { ChecksList, ClaudeAssist } from "@/components/assist";
+import { FileDrop } from "@/components/file-drop";
 import { ResearchCard } from "@/components/research";
 import { Button, ButtonLink, buttonClass, cx, MatchRing } from "@/components/ui";
 import { isLive, stopRun, useElapsed, useRun } from "@/components/use-run";
@@ -51,6 +52,10 @@ export function TailorStudio({
   // Auto-detection of company / title from the pasted JD (or a link)
   const [detect, setDetect] = useState<{ state: "idle" | "working" | "done" | "error"; msg?: string }>({ state: "idle" });
   const [touched, setTouched] = useState({ company: !!initialJob, role: !!initialJob });
+  // Optional context for this application
+  const [note, setNote] = useState("");
+  const [extraFiles, setExtraFiles] = useState<File[]>([]);
+  const [showExtras, setShowExtras] = useState(false);
 
   const run = useRun(runId);
   const live = isLive(run.status) || submitting;
@@ -115,11 +120,16 @@ export function TailorStudio({
     setSubmitting(true);
     setView(null);
     try {
-      const res = await fetch("/api/tailor", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ company, role, url, jd, baseResume: base, skills: opts, docType, model: model || undefined, effort: effort || undefined }),
-      });
+      const data = { company, role, url, jd, baseResume: base, skills: opts, docType, model: model || undefined, effort: effort || undefined, note: note.trim() || undefined };
+      let res: Response;
+      if (extraFiles.length) {
+        const fd = new FormData();
+        fd.set("data", JSON.stringify(data));
+        extraFiles.forEach((f) => fd.append("files", f));
+        res = await fetch("/api/tailor", { method: "POST", body: fd });
+      } else {
+        res = await fetch("/api/tailor", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+      }
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Something went wrong");
       setJobSlug(json.slug);
@@ -263,9 +273,16 @@ export function TailorStudio({
               ))}
             </div>
           ) : (
-            <Link href="/resumes" className="rounded-xl bg-subtle px-3.5 py-3 t-body-s text-ink-2 hover:bg-muted">
-              No base resume yet — <span className="text-ink-accent">upload your CV first →</span>
-            </Link>
+            <div className="grid grid-cols-2 gap-2">
+              <Link href="/resumes" className="rounded-xl bg-subtle px-3.5 py-3 t-body-s text-ink-2 hover:bg-muted">
+                <span className="block t-label text-ink">I have a CV</span>
+                Upload it →
+              </Link>
+              <Link href="/resumes/new" className="rounded-xl bg-accent-subtle px-3.5 py-3 t-body-s text-ink-2 ring-1 ring-accent/30 hover:bg-accent-subtle/70">
+                <span className="block t-label text-ink">I don’t have one</span>
+                <span className="text-ink-accent">Build it with Claude →</span>
+              </Link>
+            </div>
           )}
         </section>
 
@@ -293,6 +310,35 @@ export function TailorStudio({
             })}
           </div>
         </section>
+
+        {(!initialJob || jd) && (
+          <section className="card flex flex-col gap-3 p-[22px]">
+            <button className="flex items-center gap-2 text-left" onClick={() => setShowExtras((s) => !s)} disabled={live}>
+              <span className="grid size-[22px] place-items-center rounded-full bg-inverse t-label-s text-ink-inverse">4</span>
+              <span className="flex-1">
+                <span className="block t-h3 text-ink">Anything else for this application?</span>
+                <span className="block t-body-s text-ink-3">Optional — a referral, why this company, projects not on your CV, a portfolio…</span>
+              </span>
+              <span className="t-label-s text-ink-accent">{showExtras ? "Hide" : note || extraFiles.length ? `${extraFiles.length ? `${extraFiles.length} file${extraFiles.length > 1 ? "s" : ""}` : "Note"} added` : "Add"}</span>
+            </button>
+            <AnimatePresence initial={false}>
+              {showExtras && (
+                <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="flex flex-col gap-3 overflow-hidden">
+                  <textarea
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    disabled={live}
+                    rows={4}
+                    placeholder={"e.g. Maya Chen (EM on the Geist team) said she'd refer me. I've used Vercel's AI SDK in a side project — repo attached. I can't relocate before March."}
+                    className="resize-y rounded-xl border border-line bg-subtle px-3.5 py-3 t-body-s text-ink outline-none placeholder:text-ink-3 focus:border-accent focus:shadow-ring"
+                  />
+                  <FileDrop files={extraFiles} onChange={setExtraFiles} disabled={live} compact hint="Portfolio, project write-up, reference letter, certificate…" />
+                  <p className="t-body-s text-ink-3">Saved in this job’s folder (extras/). Claude treats it as true and uses what’s relevant — for this application only.</p>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </section>
+        )}
 
         <div className="flex-1" />
         {formError && <p className="rounded-xl bg-bad-bg px-3.5 py-2.5 t-body-s text-bad">{formError}</p>}

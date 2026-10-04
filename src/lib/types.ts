@@ -26,6 +26,31 @@ export type Research = { company?: WebLink[]; learn?: LearnLink[]; interview?: W
 
 export type DocType = "resume" | "academic";
 
+export type SourceFile = { name: string; original: string; readable: string; kind: "text" | "pdf" | "image" | "word" };
+
+/** Optional extra context the candidate adds for one application (saved in jobs/<slug>/extras/). */
+export type JobExtras = { note?: string; files: SourceFile[] };
+
+/** "Build my first resume" — everything the user told us, in resumes/sources/<slug>/. */
+export type BuildMeta = {
+  slug: string;
+  file: string; // target base resume: resumes/<file>
+  name?: string;
+  targetRole?: string;
+  docType: DocType;
+  region?: string;
+  createdAt: string;
+  status: "building" | "ready" | "error";
+  sources: SourceFile[];
+  questions?: ClaudeQuestion[];
+  suggestions?: string[];
+  checks?: QualityCheck[];
+  revisions?: number;
+  sessionId?: string;
+  lastRunId?: string;
+  lastError?: string;
+};
+
 export type QualityCheck = { id: string; label: string; ok: boolean; detail?: string; blocking?: boolean };
 
 export type JobMeta = {
@@ -43,6 +68,7 @@ export type JobMeta = {
   docType?: DocType; // resume (industry, 1–2 pages) or academic CV (no page limit)
   research?: Research;
   letterChecks?: QualityCheck[];
+  extras?: JobExtras;
   match?: { before: number; after: number };
   keywords?: Keywords;
   summary?: string;

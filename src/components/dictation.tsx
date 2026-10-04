@@ -40,6 +40,16 @@ function setNativeValue(el: Field, value: string) {
   el.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
+/** Add right padding for the mic button; returns a function that restores the original padding. */
+function reserveMicSpace(el: Field) {
+  const prev = el.style.paddingRight;
+  const base = parseFloat(getComputedStyle(el).paddingRight) || 0;
+  if (base < 34) el.style.paddingRight = `${base + 34}px`;
+  return () => {
+    el.style.paddingRight = prev;
+  };
+}
+
 function getRecognition(): (new () => SpeechRecognitionLike) | null {
   if (typeof window === "undefined") return null;
   const w = window as unknown as { SpeechRecognition?: new () => SpeechRecognitionLike; webkitSpeechRecognition?: new () => SpeechRecognitionLike };
@@ -60,25 +70,54 @@ export function Dictation({ language }: { language?: string }) {
     setSupported(!!getRecognition());
   }, []);
 
-  // Track the focused field.
+  // Track the focused field — or the hovered one when nothing is focused — so every field offers the mic.
+  const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const overButton = useRef(false);
   useEffect(() => {
     if (!supported) return;
-    const onFocus = (e: FocusEvent) => {
-      if (isDictatable(e.target as Element)) setField(e.target as Field);
+    const cancelHide = () => {
+      if (hideTimer.current) clearTimeout(hideTimer.current);
+      hideTimer.current = null;
     };
-    const onBlur = () => {
-      // Keep the button while listening; otherwise hide once focus leaves text fields.
-      setTimeout(() => {
-        if (!session.current && !isDictatable(document.activeElement)) setField(null);
-      }, 120);
+    const scheduleHide = () => {
+      cancelHide();
+      hideTimer.current = setTimeout(() => {
+        if (session.current || overButton.current) return;
+        const active = document.activeElement;
+        setField(isDictatable(active) ? active : null);
+      }, 220);
+    };
+    const onFocus = (e: FocusEvent) => {
+      if (isDictatable(e.target as Element)) {
+        cancelHide();
+        setField(e.target as Field);
+      }
+    };
+    const onOver = (e: MouseEvent) => {
+      const t = e.target as Element;
+      if (session.current || !isDictatable(t)) return;
+      if (isDictatable(document.activeElement) && document.activeElement !== t) return; // focus wins
+      cancelHide();
+      setField(t);
+    };
+    const onOut = (e: MouseEvent) => {
+      if (isDictatable(e.target as Element) && document.activeElement !== e.target) scheduleHide();
     };
     document.addEventListener("focusin", onFocus);
-    document.addEventListener("focusout", onBlur);
+    document.addEventListener("focusout", scheduleHide);
+    document.addEventListener("mouseover", onOver);
+    document.addEventListener("mouseout", onOut);
     return () => {
+      cancelHide();
       document.removeEventListener("focusin", onFocus);
-      document.removeEventListener("focusout", onBlur);
+      document.removeEventListener("focusout", scheduleHide);
+      document.removeEventListener("mouseover", onOver);
+      document.removeEventListener("mouseout", onOut);
     };
   }, [supported]);
+
+  // Make room for the mic so text never runs underneath it.
+  useEffect(() => (field ? reserveMicSpace(field) : undefined), [field]);
 
   // Keep the button pinned to the field's right edge.
   useEffect(() => {
@@ -180,7 +219,12 @@ export function Dictation({ language }: { language?: string }) {
   if (!supported || !field || !pos) return null;
 
   return (
-    <div className="no-print pointer-events-none fixed z-50" style={{ top: pos.top, left: pos.left }}>
+    <div
+      className="no-print pointer-events-none fixed z-50"
+      style={{ top: pos.top, left: pos.left }}
+      onMouseEnter={() => (overButton.current = true)}
+      onMouseLeave={() => (overButton.current = false)}
+    >
       <button
         type="button"
         onMouseDown={(e) => e.preventDefault()} // keep focus (and the caret) in the field
