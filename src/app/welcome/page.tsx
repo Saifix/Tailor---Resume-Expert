@@ -19,7 +19,9 @@ export default async function Welcome() {
     {
       ok: claude.found,
       title: claude.found ? "Claude Code found" : "Claude Code not found",
-      detail: claude.found ? `claude ${claude.version} · on your PATH` : "Install it from claude.com/claude-code, run `claude` once to sign in, then reload.",
+      detail: claude.found
+        ? `claude ${claude.version} · ${displayPath(claude.bin)}`
+        : `Install it from claude.com/claude-code, run \`claude\` once to sign in, then reload.${claude.error ? ` (${claude.error})` : ""}`,
       mono: claude.found,
     },
     { ok: claude.found, title: "Runs on your Claude plan", detail: "No API key — headless runs use the login Claude Code already has.", mono: false },

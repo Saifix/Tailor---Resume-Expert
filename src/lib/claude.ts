@@ -1,9 +1,38 @@
 import { spawn, execFile, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { TAILOR_HOME } from "./paths";
 
-const CLAUDE_BIN = process.env.CLAUDE_BIN || "claude";
+/**
+ * Where the Claude Code executable lives. CLAUDE_BIN overrides everything.
+ *
+ * On Windows an npm install only puts `claude.cmd` on PATH, and Node refuses to spawn .cmd/.bat
+ * shims without a shell (ENOENT for the bare name, EINVAL since Node 20.12). The shim just forwards
+ * to a real `claude.exe` inside the package, so we locate that (or the native installer's exe) and
+ * spawn it directly — no shell, so prompts can still go over stdin without quoting issues.
+ */
+function resolveClaudeBin(): string {
+  if (process.env.CLAUDE_BIN) return process.env.CLAUDE_BIN;
+  if (process.platform !== "win32") return "claude";
+
+  const npmExe = (dir: string) => path.join(dir, "node_modules", "@anthropic-ai", "claude-code", "bin", "claude.exe");
+  const candidates: string[] = [];
+  for (const raw of (process.env.PATH ?? "").split(path.delimiter)) {
+    const dir = raw.trim().replace(/^"|"$/g, "");
+    if (!dir) continue;
+    candidates.push(path.join(dir, "claude.exe")); // native installer / global exe on PATH
+    if (fs.existsSync(path.join(dir, "claude.cmd"))) candidates.push(npmExe(dir)); // npm shim → real exe
+  }
+  // Common locations even when they are missing from this process's PATH.
+  candidates.push(path.join(os.homedir(), ".local", "bin", "claude.exe"));
+  if (process.env.APPDATA) candidates.push(npmExe(path.join(process.env.APPDATA, "npm")));
+
+  return candidates.find((c) => fs.existsSync(c)) ?? "claude";
+}
+
+const CLAUDE_BIN = resolveClaudeBin();
 
 /** Tools a Tailor run may use. No Bash — Claude only reads/writes files in ~/Tailor (plus web search when enabled). */
 const TOOLS = ["Read", "Write", "Edit", "Glob", "Grep", "Skill"];
@@ -203,7 +232,7 @@ export function exec(run: Run, prompt: string, opts: ClaudeConfig & { resume?: s
     };
 
     child.on("error", (err: NodeJS.ErrnoException) => {
-      const error = err.code === "ENOENT" ? `Could not find the \`${CLAUDE_BIN}\` command. Is Claude Code installed and on your PATH?` : err.message;
+      const error = err.code === "ENOENT" ? `Could not find the \`${CLAUDE_BIN}\` command. Is Claude Code installed and on your PATH? Set CLAUDE_BIN to its full path to override.` : err.message;
       emit(run, { type: "log", text: error, at: Date.now() });
       done({ ok: false, stopped: false, text: "", error });
     });
@@ -243,7 +272,7 @@ export function detectClaude(): Promise<ClaudeInfo> {
   return new Promise((resolve) => {
     execFile(/*turbopackIgnore: true*/ CLAUDE_BIN, ["--version"], { timeout: 15_000, windowsHide: true }, (err, stdout) => {
       const info: ClaudeInfo = err
-        ? { found: false, bin: CLAUDE_BIN, error: (err as NodeJS.ErrnoException).code === "ENOENT" ? "not found on PATH" : err.message }
+        ? { found: false, bin: CLAUDE_BIN, error: (err as NodeJS.ErrnoException).code === "ENOENT" ? "not found on PATH — set CLAUDE_BIN to the executable's full path" : err.message }
         : { found: true, bin: CLAUDE_BIN, version: stdout.trim().split(/\s+/)[0] };
       cached = { at: Date.now(), info };
       resolve(info);
