@@ -208,23 +208,27 @@ body {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
 }
 
-/* Rendered resume (Markdown) */
-.resume-doc { color: #1c1c1e; font-size: 13px; line-height: 19px; }
-.resume-doc h1 { font-size: 30px; line-height: 36px; font-weight: 600; letter-spacing: -0.02em; margin-bottom: 4px; }
-.resume-doc h1 + p { font-family: var(--font-mono); font-size: 11px; color: #636366; margin-bottom: 8px; }
-.resume-doc h2 { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #5a4de6; margin: 18px 0 8px; padding-top: 12px; border-top: 1px solid #e2e2e7; }
-.resume-doc h3 { font-size: 14px; font-weight: 500; margin: 10px 0 4px; }
-.resume-doc p { margin: 4px 0; }
-.resume-doc ul { margin: 4px 0; padding: 0; list-style: none; }
-.resume-doc li { position: relative; padding: 3px 6px 3px 18px; border-radius: 4px; }
-.resume-doc li::before { content: "•"; position: absolute; left: 6px; color: #8e8e93; }
+/* Rendered resume (Markdown).
+   Density matters: this is what the one-page check measures, so it is tuned like a classic Word resume
+   (≈10pt Calibri, tight headings) and fits ~600 words on A4 — the same as the Word export. */
+.resume-doc { color: #1c1c1e; font-family: Calibri, Carlito, "Segoe UI", Arial, sans-serif; font-size: 13.5px; line-height: 17px; }
+.resume-doc h1 { font-size: 26px; line-height: 30px; font-weight: 700; letter-spacing: -0.01em; margin: 0 0 2px; }
+.resume-doc h1 + p { font-size: 12.5px; line-height: 16px; color: #48484a; margin: 0 0 6px; }
+.resume-doc h2 { font-size: 10.5px; line-height: 14px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #5a4de6; margin: 10px 0 4px; padding-top: 4px; border-top: 1px solid #d9d9de; }
+.resume-doc h3 { display: flex; flex-wrap: wrap; column-gap: 6px; font-size: 13.5px; line-height: 17px; font-weight: 700; margin: 7px 0 2px; }
+.resume-doc h3 .org { font-weight: 400; }
+.resume-doc h3 .dates { margin-left: auto; font-weight: 400; color: #48484a; white-space: nowrap; }
+.resume-doc p { margin: 2px 0; }
+.resume-doc ul { margin: 2px 0; padding: 0; list-style: none; }
+.resume-doc li { position: relative; padding: 1px 4px 1px 14px; border-radius: 3px; }
+.resume-doc li::before { content: "•"; position: absolute; left: 3px; color: #6e6e73; }
 .resume-doc li.changed { background: #f3f2ff; }
-.resume-doc strong { font-weight: 600; }
+.resume-doc strong { font-weight: 700; }
 .resume-doc a { color: inherit; }
 
 @media print {
   body { background: white; }
   .no-print { display: none !important; }
   .resume-doc li.changed { background: none; }
-  @page { margin: 14mm 16mm; }
+  @page { size: A4; margin: 12mm 14mm; }
 }

@@ -76,6 +76,23 @@ export function sections(md: string): string[] {
     .map((l) => l.replace(/^##\s+/, "").trim().toLowerCase());
 }
 
+/** Bullets under each `###` entry (roles, projects…), in document order. */
+export function roleBullets(md: string): { role: string; bullets: number }[] {
+  const out: { role: string; bullets: number }[] = [];
+  let cur: { role: string; bullets: number } | null = null;
+  for (const l of lines(md)) {
+    if (/^###\s+/.test(l)) {
+      cur = { role: l.replace(/^###\s+/, "").trim(), bullets: 0 };
+      out.push(cur);
+    } else if (/^#{1,2}\s+/.test(l)) cur = null;
+    else if (cur && /^\s*[-*+]\s+/.test(l)) cur.bullets++;
+  }
+  return out;
+}
+
+/** "Title — Company · dates" → "title — company" so the same role matches across base and tailored. */
+const roleKey = (role: string) => role.split(" · ")[0].replace(/[*_]/g, "").trim().toLowerCase();
+
 /** Numbers that matter for honesty: 4.1, 2, 420, 35, 2016 … (ignores identity block). */
 export function numbers(md: string): string[] {
   const body = lines(md).slice(2).join("\n");
@@ -174,6 +191,20 @@ export function runChecks(i: CheckInput): CheckResult[] {
   // 8. Bullet length (advice only)
   const long = lines(i.tailored).filter((l) => /^\s*[-*]\s/.test(l) && words(l) > 34).length;
   checks.push({ id: "bullets", label: "Bullets are skimmable", ok: long === 0, detail: long ? `${long} bullet${long > 1 ? "s" : ""} over ~2 lines` : undefined, blocking: false });
+
+  // 9. No role left with a single bullet — it reads as an afterthought. Only when the base resume
+  //    (or the facts, for roles that aren't in the base) gives Claude more to work with.
+  const baseCounts = new Map(roleBullets(i.base).map((r) => [roleKey(r.role), r.bullets]));
+  const lonely = roleBullets(i.tailored)
+    .filter((r) => r.bullets === 1 && (baseCounts.get(roleKey(r.role)) ?? 2) >= 2)
+    .map((r) => r.role.split(" · ")[0].replace(/[*_]/g, ""));
+  checks.push({
+    id: "roles",
+    label: "No role with a lone bullet",
+    ok: lonely.length === 0,
+    detail: lonely.length ? `Only one bullet under: ${lonely.join("; ")}` : undefined,
+    blocking: true,
+  });
 
   return checks;
 }
@@ -292,6 +323,8 @@ export function issuesForClaude(checks: CheckResult[]): string {
           return `- ${c.detail}. Answer every question, or mark it "needsInput" if only the candidate knows the answer.`;
         case "result":
           return `- result.json is missing or invalid — rewrite it with the exact shape from the skill.`;
+        case "roles":
+          return `- ${c.detail}. A role with one bullet looks like an afterthought. Give each of those roles 2–3 bullets from the base resume or facts (shorten other bullets or the Skills section to make room), or — only for an old or unrelated role — fold it into a single line with no bullets.`;
         default:
           return `- ${c.label}: ${c.detail ?? "failed"}`;
       }
